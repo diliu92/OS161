@@ -14,15 +14,7 @@ int sys_open(const char *filename, int flags, int mode, int * return_val){
 	struct file_des *fd;
 
 	/* Open the file. */
-	char *console = NULL;
-	curfdt = curthread->fdt;
-	console = kstrdup("con:");
 	result = vfs_open((char*)filename, flags, mode, &v);
-	kfree(console);
-
-	curfdt->fds->v[0]=fd_create(v,O_RDONLY,0);
-	curfdt->fds->v[1]=fd_create(v,O_WRONLY,0);
-	curfdt->fds->v[2]=fd_create(v,O_WRONLY,0);
 
 	if (result) {
 		vfs_close(v);
@@ -130,3 +122,17 @@ sys_close(int fd){
 	result = fd_table_rm_fd(curfdt,fd);
 	return result;
 }
+
+// https://github.com/rbui/projectJailBait/blob/master/os161-1.11/kern/syscall/syscall_mine.c
+void sys__exit(int exitcode){
+	if (curfdt->fds != NULL){
+		for (int i=3; i<(int)array_num(curfdt->fds);i++){
+			struct file_des *fd = array_get(curfdt->fds,i);
+			if (fd!=NULL){
+				vfs_close(fd->vnode);
+			}
+		}
+		array_destroy(curfdt->fds);
+	}
+	(void)exitcode;
+}	

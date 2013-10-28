@@ -9,6 +9,7 @@ struct fd_table{
 };
  
 struct fd_table *fd_table_create(void);
+void fd_table_init(void);
 void fd_table_destroy(struct fd_table *fdt);
 struct fd_table *fd_table_dup(struct fd_table *fdt);
 
