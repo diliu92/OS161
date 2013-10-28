@@ -33,6 +33,8 @@
 
 #define THREADINLINE
 
+#include "opt-A2.h"
+
 #include <types.h>
 #include <kern/errno.h>
 #include <lib.h>
@@ -151,6 +153,10 @@ thread_create(const char *name)
 
 	/* If you add to struct thread, be sure to initialize here */
 
+	#if OPT_A2
+		thread->fdt = fd_table_create();
+	#endif
+
 	return thread;
 }
 
@@ -260,6 +266,10 @@ thread_destroy(struct thread *thread)
 
 	kfree(thread->t_name);
 	kfree(thread);
+
+	#if OPT_A2
+		fd_table_destroy(thread->fdt);
+	#endif
 }
 
 /*
@@ -796,6 +806,11 @@ thread_exit(void)
         splhigh();
 	thread_switch(S_ZOMBIE, NULL);
 	panic("The zombie walks!\n");
+
+	#if OPT_A2
+		fd_table_destroy(cur->fdt);
+	#endif
+
 }
 
 /*

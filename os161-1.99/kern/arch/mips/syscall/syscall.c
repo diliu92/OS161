@@ -36,6 +36,11 @@
 #include <current.h>
 #include <syscall.h>
 
+#include "opt-A2.h"
+
+#if OPT_A2
+#include <file_syscalls.h>
+#endif
 
 /*
  * System call dispatcher.
@@ -108,6 +113,26 @@ syscall(struct trapframe *tf)
 		err = sys___time((userptr_t)tf->tf_a0,
 				 (userptr_t)tf->tf_a1);
 		break;
+
+		#if OPT_A2
+		case SYS_open:
+		err = sys_open((char*)tf->tf_a0,tf->tf_a1,tf->tf_a2,(int*)tf->tf_v0);
+		break;
+
+		case SYS_read:
+		err = sys_read(tf->tf_a0,(void *)tf->tf_a1,(size_t)tf->tf_a2,(int*)tf->tf_v0);
+		break;
+
+		case SYS_write:
+		err = sys_write(tf->tf_a0,(void *)tf->tf_a1,(size_t)tf->tf_a2,(int*)tf->tf_v0);
+		break;		
+
+		case SYS_close:
+		err = sys_close(tf->tf_a0);
+		break;
+
+		#endif
+
 
 	    /* Add stuff here */
  

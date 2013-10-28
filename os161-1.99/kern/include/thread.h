@@ -35,6 +35,12 @@
  *
  * Note: curthread is defined by <current.h>.
  */
+ 
+#include "opt-A2.h"
+
+#if OPT_A2
+#include <fd_table.h>
+#endif
 
 #include <array.h>
 #include <spinlock.h>
@@ -106,6 +112,10 @@ struct thread {
 	 */
 
 	/* add more here as needed */
+	#if OPT_A2
+		struct fd_table *fdt;
+	#endif
+
 };
 
 /*
