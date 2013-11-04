@@ -5,6 +5,7 @@
 struct file_des *fd_create(struct vnode *v, int flg, off_t os){
 	struct file_des *fd;
 	fd = kmalloc(sizeof(struct file_des));
+
 	if (fd == NULL){
 		return NULL;
 	}
@@ -17,7 +18,7 @@ struct file_des *fd_create(struct vnode *v, int flg, off_t os){
 }
 
 void fd_destroy(struct file_des *fd){
-    KASSERT(fd->vnode == NULL);
+    vnode_cleanup(fd->vnode);
     kfree(fd->vnode);
     kfree(fd);
 }

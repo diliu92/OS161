@@ -53,6 +53,10 @@
 #include <mainbus.h>
 #include <vnode.h>
 
+#if OPT_A2
+#include <fd_table.h>
+#endif
+
 #include "opt-synchprobs.h"
 
 
@@ -153,9 +157,9 @@ thread_create(const char *name)
 
 	/* If you add to struct thread, be sure to initialize here */
 
-	#if OPT_A2
-		thread->fdt = fd_table_create();
-	#endif
+	// #if OPT_A2
+	// 	thread->fdt = fd_table_create();
+	// #endif
 
 	return thread;
 }
@@ -499,19 +503,25 @@ thread_fork(const char *name,
 	}
 
 	/* Allocate a stack */
-	newthread->t_stack = kmalloc(STACK_SIZE);
+	newthread->t_stack = kmalloc(STACK_SIZE);	
 	if (newthread->t_stack == NULL) {
 		thread_destroy(newthread);
 		return ENOMEM;
 	}
 	thread_checkstack_init(newthread);
 
-	/*
+	/*500		newthread = thread_create(name);
+
 	 * Now we clone various fields from the parent thread.
 	 */
 
 	/* Thread subsystem fields */
 	newthread->t_cpu = curthread->t_cpu;
+
+	#if OPT_A2
+		newthread->fdt = fd_table_create();
+		newthread->fdt = fd_table_init(newthread->fdt);
+	#endif
 
 	/* Attach the new thread to its process */
 	if (proc == NULL) {

@@ -83,6 +83,7 @@
 void
 syscall(struct trapframe *tf)
 {
+	// kprintf("Syscall here!!! \n");
 	int callno;
 	int32_t retval;
 	int err;
@@ -104,6 +105,7 @@ syscall(struct trapframe *tf)
 
 	retval = 0;
 
+	#if OPT_A2
 	switch (callno) {
 	    case SYS_reboot:
 		err = sys_reboot(tf->tf_a0);
@@ -114,30 +116,34 @@ syscall(struct trapframe *tf)
 				 (userptr_t)tf->tf_a1);
 		break;
 
-		#if OPT_A2
 		case SYS_open:
-		err = sys_open((char*)tf->tf_a0,tf->tf_a1,tf->tf_a2,(int*)tf->tf_v0);
+		// kprintf("Open?? \n");
+		err = sys_open((char*)tf->tf_a0,tf->tf_a1,tf->tf_a2,&retval);
+		// kprintf("Open!! \n");
 		break;
 
 		case SYS_read:
-		err = sys_read(tf->tf_a0,(void *)tf->tf_a1,(size_t)tf->tf_a2,(int*)tf->tf_v0);
+		// kprintf("Read?? \n");
+		err = sys_read(tf->tf_a0,(void *)tf->tf_a1,(size_t)tf->tf_a2,&retval);
+		// kprintf("Read!! \n");
 		break;
 
 		case SYS_write:
-		err = sys_write(tf->tf_a0,(void *)tf->tf_a1,(size_t)tf->tf_a2,(int*)tf->tf_v0);
+		// kprintf("Write?? \n");
+		err = sys_write(tf->tf_a0,(void *)tf->tf_a1,(size_t)tf->tf_a2,&retval);
+		// kprintf("Write!! \n");
 		break;		
 
 		case SYS_close:
+		// kprintf("Close?? \n");
 		err = sys_close(tf->tf_a0);
+		// kprintf("Close!! \n");
 		break;
 
 		case SYS__exit:
 		sys__exit(tf->tf_a0);
 		err = 0;
 		break;
-
-		#endif
-
 
 	    /* Add stuff here */
  
@@ -146,7 +152,24 @@ syscall(struct trapframe *tf)
 		err = ENOSYS;
 		break;
 	}
+	#else
+	switch (callno) {
+	    case SYS_reboot:
+		err = sys_reboot(tf->tf_a0);
+		break;
 
+	    case SYS___time:
+		err = sys___time((userptr_t)tf->tf_a0,
+				 (userptr_t)tf->tf_a1);
+		break;
+	    /* Add stuff here */
+ 
+	    default:
+		kprintf("Unknown syscall %d\n", callno);
+		err = ENOSYS;
+		break;
+	}
+	#endif
 
 	if (err) {
 		/*

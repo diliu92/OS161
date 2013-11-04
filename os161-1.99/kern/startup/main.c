@@ -50,10 +50,6 @@
 #include <test.h>
 #include <version.h>
 
-#if OPT_A2
-#include <fd_table.h>
-#endif
-
 #include "autoconf.h"  // for pseudoconfig
 
 
@@ -116,10 +112,6 @@ boot(void)
 	thread_bootstrap();
 	hardclock_bootstrap();
 	vfs_bootstrap();
-
-	#if OPT_A2
-	fd_table_init();
-	#endif
 
 	/* Probe and initialize devices. Interrupts should come on. */
 	kprintf("Device probe...\n");
