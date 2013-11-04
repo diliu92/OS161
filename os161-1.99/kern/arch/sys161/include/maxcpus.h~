@@ -27,22 +27,18 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _MIPS_THREAD_H_
-#define _MIPS_THREAD_H_
-
+#ifndef _SYS161_MAXCPUS_H_
+#define _SYS161_MAXCPUS_H_
 
 /*
- * Machine-dependent thread bits.
+ * For various reasons (see mips/cpu.c) it's desirable to have a
+ * fixed-size per-cpu array in the data segment. This is
+ * platform-dependent rather than processor-dependent because there's
+ * nothing about the processor that determines how many CPUs can
+ * exist; however, any real platform has *some* limit. For System/161,
+ * the limit is 32.
  */
 
-#include <setjmp.h>
+#define MAXCPUS 1
 
-typedef void (*badfaultfunc_t)(void);
-
-struct thread_machdep {
-	badfaultfunc_t tm_badfaultfunc;	/* fault hook used by copyin/out */
-	jmp_buf tm_copyjmp;		/* longjmp area used by copyin/out */
-};
-
-
-#endif /* _MIPS_THREAD_H_ */
+#endif /* _SYS161_MAXCPUS_H_ */

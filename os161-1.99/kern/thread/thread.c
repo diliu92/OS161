@@ -33,6 +33,8 @@
 
 #define THREADINLINE
 
+#include "opt-A2.h"
+
 #include <types.h>
 #include <kern/errno.h>
 #include <lib.h>
@@ -50,6 +52,10 @@
 #include <addrspace.h>
 #include <mainbus.h>
 #include <vnode.h>
+
+#if OPT_A2
+#include <fd_table.h>
+#endif
 
 #include "opt-synchprobs.h"
 
@@ -150,6 +156,10 @@ thread_create(const char *name)
 	thread->t_iplhigh_count = 1; /* corresponding to t_curspl */
 
 	/* If you add to struct thread, be sure to initialize here */
+
+	// #if OPT_A2
+	// 	thread->fdt = fd_table_create();
+	// #endif
 
 	return thread;
 }
@@ -260,6 +270,10 @@ thread_destroy(struct thread *thread)
 
 	kfree(thread->t_name);
 	kfree(thread);
+
+	#if OPT_A2
+		fd_table_destroy(thread->fdt);
+	#endif
 }
 
 /*
@@ -489,19 +503,25 @@ thread_fork(const char *name,
 	}
 
 	/* Allocate a stack */
-	newthread->t_stack = kmalloc(STACK_SIZE);
+	newthread->t_stack = kmalloc(STACK_SIZE);	
 	if (newthread->t_stack == NULL) {
 		thread_destroy(newthread);
 		return ENOMEM;
 	}
 	thread_checkstack_init(newthread);
 
-	/*
+	/*500		newthread = thread_create(name);
+
 	 * Now we clone various fields from the parent thread.
 	 */
 
 	/* Thread subsystem fields */
 	newthread->t_cpu = curthread->t_cpu;
+
+	#if OPT_A2
+		newthread->fdt = fd_table_create();
+		newthread->fdt = fd_table_init(newthread->fdt);
+	#endif
 
 	/* Attach the new thread to its process */
 	if (proc == NULL) {
@@ -796,6 +816,11 @@ thread_exit(void)
         splhigh();
 	thread_switch(S_ZOMBIE, NULL);
 	panic("The zombie walks!\n");
+
+	#if OPT_A2
+		fd_table_destroy(cur->fdt);
+	#endif
+
 }
 
 /*
