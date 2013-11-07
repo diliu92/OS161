@@ -14,6 +14,7 @@ struct file_des
 	struct vnode *vnode;
 	int flag;
 	off_t offset;
+	// int opencount;
 };
 
 struct file_des *fd_create(struct vnode *v, int flg, off_t os);

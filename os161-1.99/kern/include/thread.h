@@ -128,6 +128,10 @@ struct thread {
 DECLARRAY(thread);
 DEFARRAY(thread, THREADINLINE);
 
+#if OPT_A2
+	void exorcise(void);
+#endif
+
 /* Call once during system startup to allocate data structures. */
 void thread_bootstrap(void);
 
