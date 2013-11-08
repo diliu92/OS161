@@ -19,6 +19,7 @@ struct fd_table *fd_table_create(void){
 	return fdt;
 }
 
+
 struct fd_table *fd_table_init(struct fd_table *fdt) {
 	int result;
 	unsigned int index;
@@ -54,18 +55,33 @@ struct fd_table *fd_table_init(struct fd_table *fdt) {
 	return fdt;
 }
 
+
 void fd_table_destroy(struct fd_table *fdt){
-	KASSERT(array_num(fdt->fds) == 0);
+	int dec =0;
+	for (int i=0; i<(int)array_num(fdt->fds); i++){
+		struct file_des *fd = array_get(fdt->fds,i);
+		kfree(fd);
+		dec = i+1;
+	}
+	(fdt->fds)->num -= dec;
 	array_destroy(fdt->fds);
 	kfree(fdt);
 }
+
 
 struct fd_table *fd_table_dup(struct fd_table *fdt){
 	struct fd_table *dup_fdt;
 	dup_fdt = kmalloc(sizeof(struct fd_table));
 	dup_fdt->fds = fdt->fds;
+	struct file_des *fd;
+	int len = array_num(dup_fdt->fds);
+	for (int i=0; i<len; i++){
+		fd = array_get(dup_fdt->fds,i);
+		vnode_incref(fd->vnode);
+	} 
 	return dup_fdt;
 }
+
 
 int fd_table_add_fd(struct fd_table *fdt, struct file_des *fd){
 	unsigned *index_ret = NULL;
@@ -74,16 +90,31 @@ int fd_table_add_fd(struct fd_table *fdt, struct file_des *fd){
 	if (fd_index == OPEN_MAX-1){
 		return -1;
 	}
+	// for (int i=0; i<(int)fd_index; i++){
+	// 	struct file_des *old_fd = array_get(fdt->fds,i);
+	// 	if ((old_fd!=NULL) && (old_fd->vnode == fd->vnode)){
+	// 		old_fd->opencount ++;
+	// 		fd->opencount ++;
+	// 	}
+	// }
 	array_add(fdt->fds, fd, index_ret);
 	return (int)fd_index;
 }
+
 
 struct file_des *fd_table_get_fd(struct fd_table *fdt, int fd){
 	return array_get(fdt->fds, fd);
 }
 
 int fd_table_rm_fd(struct fd_table *fdt, int fd){
-	if ((array_num(fdt->fds)!=0) && (array_get(fdt->fds,fd)!=NULL)){
+	struct file_des *rm_fd = array_get(fdt->fds,fd);
+	if ((array_num(fdt->fds)!=0) && (rm_fd!=NULL)){
+		// for (int i=0; i<(int)array_num(fdt->fds); i++){
+		// 	struct file_des *old_fd = array_get(fdt->fds,i);
+		// 	if ((old_fd!=NULL) && (old_fd->vnode == rm_fd->vnode)){
+		// 		old_fd->opencount --;
+		// 	}
+		// }
 		struct vnode *close_v = (fd_table_get_fd(fdt,fd))->vnode;
 		vfs_close(close_v);
 		array_set(fdt->fds, fd, NULL);
@@ -91,6 +122,7 @@ int fd_table_rm_fd(struct fd_table *fdt, int fd){
 	}
 	return 1;
 }
+
 
 int fd_table_fd_nums(struct fd_table *fdt){
 	return fdt->fds->num;

@@ -17,7 +17,8 @@ int sys_open(const char *filename, int flags, int mode, int *return_val){
 	// kprintf("In open;\n");
 	if (filename == NULL){
 	}
-
+	
+	// Check for invalid user address space
 	int * temp_pt = kmalloc(sizeof(*filename));
 	result = copyin((userptr_t)filename, temp_pt, sizeof(*filename));
 	kfree(temp_pt);
@@ -33,9 +34,7 @@ int sys_open(const char *filename, int flags, int mode, int *return_val){
 
 	// kprintf("Creating fd;\n");
 	fd = fd_create(v, flags, 0);
-
-	// kprintf("Created fd;\n");
-	if (curthread == NULL){
+	if (fd == NULL){
 		return -2;
 	}
 
@@ -167,9 +166,15 @@ sys_close(int fd){
 	return 0;
 }
 
-// https://github.com/rbui/projectJailBait/blob/master/os161-1.11/kern/syscall/syscall_mine.c
 void sys__exit(int exitcode){
+	struct file_des *rm_fd;
+	for (int i=0; i<(int)array_num(curthread->fdt->fds); i++){
+		rm_fd = array_get(curthread->fdt->fds,i);
+		if (rm_fd)
+		fd_destroy(rm_fd);
+	}
 	thread_exit();
 	return;
 	(void)exitcode;
 }	
+

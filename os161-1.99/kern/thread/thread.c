@@ -157,9 +157,9 @@ thread_create(const char *name)
 
 	/* If you add to struct thread, be sure to initialize here */
 
-	// #if OPT_A2
-	// 	thread->fdt = fd_table_create();
-	// #endif
+	#if OPT_A2
+		thread->fdt = fd_table_create();
+	#endif
 
 	return thread;
 }
@@ -268,12 +268,14 @@ thread_destroy(struct thread *thread)
 	/* sheer paranoia */
 	thread->t_wchan_name = "DESTROYED";
 
-	kfree(thread->t_name);
-	kfree(thread);
-
 	#if OPT_A2
 		fd_table_destroy(thread->fdt);
 	#endif
+
+	kfree(thread->t_name);
+	kfree(thread);
+
+
 }
 
 /*
@@ -282,6 +284,7 @@ thread_destroy(struct thread *thread)
  *
  * The list of zombies is per-cpu.
  */
+
 static
 void
 exorcise(void)
@@ -519,7 +522,7 @@ thread_fork(const char *name,
 	newthread->t_cpu = curthread->t_cpu;
 
 	#if OPT_A2
-		newthread->fdt = fd_table_create();
+		// newthread->fdt = fd_table_create();
 		newthread->fdt = fd_table_init(newthread->fdt);
 	#endif
 
@@ -1222,3 +1225,4 @@ interprocessor_interrupt(void)
 	curcpu->c_ipi_pending = 0;
 	spinlock_release(&curcpu->c_ipi_lock);
 }
+

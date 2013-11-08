@@ -54,6 +54,8 @@
 #include <emufs.h>
 #include "autoconf.h"
 
+#include "opt-A2.h"
+
 /* Register offsets */
 #define REG_HANDLE    0
 #define REG_OFFSET    4
@@ -149,7 +151,14 @@ translate_err(struct emu_softc *sc, uint32_t code)
 	    case EMU_RES_EXISTS: return EEXIST;
 	    case EMU_RES_ISDIR: return EISDIR;
 	    case EMU_RES_MEDIA: return EIO;
+	    
+	    #if OPT_A2
+	    // SYS/161 has a limit of 64 open files
+	    case EMU_RES_NOHANDLES: return EMFILE;
+	    #else
 	    case EMU_RES_NOHANDLES: return ENFILE;
+	    #endif
+
 	    case EMU_RES_NOSPACE: return ENOSPC;
 	    case EMU_RES_NOTDIR: return ENOTDIR;
 	    case EMU_RES_UNKNOWN: return EIO;
@@ -1350,3 +1359,4 @@ config_emu(struct emu_softc *sc, int emuno)
 
 	return emufs_addtovfs(sc, name);
 }
+
