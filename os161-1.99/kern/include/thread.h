@@ -35,7 +35,7 @@
  *
  * Note: curthread is defined by <current.h>.
  */
- 
+
 #include "opt-A2.h"
 
 #if OPT_A2
@@ -61,6 +61,14 @@ struct cpu;
 /* Macro to test if two addresses are on the same kernel stack */
 #define SAME_STACK(p1, p2)     (((p1) & STACK_MASK) == ((p2) & STACK_MASK))
 
+#if OPT_A2
+#define START_PID 0;
+
+struct pid_list{
+    int * pid;
+    int position;
+};
+#endif
 
 /* States a thread can be in. */
 typedef enum {
@@ -114,6 +122,8 @@ struct thread {
 	/* add more here as needed */
 	#if OPT_A2
 		struct fd_table *fdt;
+		int t_pid;
+		int t_parent_pid
 	#endif
 
 };
@@ -178,6 +188,18 @@ void schedule(void);
  */
 void thread_consider_migration(void);
 
+#if OPT_A2
+int my_fork(struct trapframe *my_tf, int *return_value);
+
+struct pib_list * created_pid_list(void);
+int add_pid_to_pib_list(void);
+
+bool pid_exit(int a_pid);
+
+int remove_one_pid(int a_pid);
+
+int delete_pid(void);
+#endif
 
 #endif /* _THREAD_H_ */
 

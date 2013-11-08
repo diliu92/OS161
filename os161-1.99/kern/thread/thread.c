@@ -78,6 +78,15 @@ static struct cpuarray allcpus;
 /* Used to wait for secondary CPUs to come online. */
 static struct semaphore *cpu_startup_sem;
 
+#if OPT_A2
+int MAX_PID = 100;
+
+
+struct pid_list *my_pid_list;
+my_pid_list = NULL;
+
+struct lock *my_lock;
+#endif
 ////////////////////////////////////////////////////////////
 
 /*
@@ -156,6 +165,8 @@ thread_create(const char *name)
 	thread->t_iplhigh_count = 1; /* corresponding to t_curspl */
 
 	/* If you add to struct thread, be sure to initialize here */
+	thread -> t_pid = add_pid_to_list();
+	thread -> t_parent_pid = 0;
 
 	#if OPT_A2
 		thread->fdt = fd_table_create();
@@ -183,7 +194,7 @@ cpu_create(unsigned hardware_number)
 	if (c == NULL) {
 		panic("cpu_create: Out of memory\n");
 	}
-	
+
 	c->c_self = c;
 	c->c_hardware_number = hardware_number;
 
@@ -435,7 +446,7 @@ thread_start_cpus(void)
 
 	cpu_startup_sem = sem_create("cpu_hatch", 0);
 	mainbus_start_cpus();
-	
+
 	for (i=0; i<cpuarray_num(&allcpus) - 1; i++) {
 		P(cpu_startup_sem);
 	}
@@ -446,7 +457,7 @@ thread_start_cpus(void)
 /*
  * Make a thread runnable.
  *
- * targetcpu might be curcpu; it might not be, too. 
+ * targetcpu might be curcpu; it might not be, too.
  */
 static
 void
@@ -506,7 +517,7 @@ thread_fork(const char *name,
 	}
 
 	/* Allocate a stack */
-	newthread->t_stack = kmalloc(STACK_SIZE);	
+	newthread->t_stack = kmalloc(STACK_SIZE);
 	if (newthread->t_stack == NULL) {
 		thread_destroy(newthread);
 		return ENOMEM;
@@ -1226,3 +1237,204 @@ interprocessor_interrupt(void)
 	spinlock_release(&curcpu->c_ipi_lock);
 }
 
+#if OPT_A2
+int my_fork(struct trapframe *my_tf, int *return_value){
+
+    struct thread *children_thread;
+
+    my_lock = lock_create(curthread -> t_name);
+
+    lock_acquire(my_lock);
+
+    children_thread = thread_create(curthread -> name);
+
+    lock_release(my_lock);
+
+    if (children_thread == NULL){
+        return_value = -1;
+        thread_destroy(children_thread);
+        return ENOMEM;
+    }
+
+    children_thread -> t_stack = (void*)kmalloc(STACK_SIZE);
+
+    if (children_thread -> t_stack == NULL){
+
+        return_value = -1;
+        thread_destroy(children_thread);
+        return ENOMEN;
+    }
+
+    thread_checkstack_init(children_thread);
+
+    //copy file state, but I do not know how to write it
+    //ask miss xiao lin lin please
+    children_thread -> fdt = curthread -> fdt;
+
+    if (children_thread -> fdt == NULL){
+
+        return_value = -1;
+        thread_destroy(children_thread);
+        return ENOMEM;
+    }
+    int result;
+
+    //just try
+
+    /*
+     if ((uintptr_t)dst % sizeof(long) == 0 &&
+     (uintptr_t)src % sizeof(long) == 0 &&
+     len % sizeof(long) == 0) {
+
+     long *d = dst;
+     const long *s = src;
+
+     for (i=0; i<len/sizeof(long); i++) {
+     d[i] = s[i];
+     }
+     }
+     else {
+     char *d = dst;
+     const char *s = src;
+
+     for (i=0; i<len; i++) {
+     d[i] = s[i];
+     }
+     }
+     */
+
+    memcpy(children_thread -> t_stack, my_tf,(sizeof(struct trapframe)));
+
+    children_thread -> t_context = curthread -> t_context;
+
+    //struct process *pro;
+
+    struct proc *my_proc
+
+    my_proc = proc_create(curthread -> t_proc -> p_name);
+
+    if (my_proc == NULL){
+
+        return_value = -1;
+        thread_destroy(children_thread);
+        return ENOMEM;
+
+    }
+
+    my_proc -> p_lock = curthread -> t_proc -> p_lock;
+
+    my_proc -> p_threads = curthread -> t_proc -> p_threads;
+
+    my_proc -> p_cwd = curthread -> t_proc -> p_cwd;
+
+    result = as_copy(curthread -> t_proc -> p_addrspace, my_proc -> p_addrspace);
+
+    result = proc_addthread(my_proc, children_thread);
+    if (result) {
+
+        return_value = -1;
+        thread_destroy(children_thread);
+        return ENOMEM;
+    }
+
+    if (childre_thread -> t_proc == NULL) {
+
+        childre_thread -> t_proc = curthread -> t_proc;
+
+    }
+
+
+
+    children_thread -> t_proc = children_thread -> t_proc;
+
+    children_thread -> tt_iplhigh_count = children_thread -> tt_iplhigh_count + 1;
+
+    thread_mak_runnable(children_thread , false);
+    //switchframe_init(newthread,enter_forked_process,(void *)&newthread->t_stack[16], 0);
+    result = thread_fork(curthread -> t_name, my_proc, my_fork, NULL, 0);
+
+    if (result){
+     return_value = -1;
+     thread_destroy(children_thread);
+     return ENMEM;
+     }
+
+    children_thread -> t_parent_pid = curthread -> t_pid;
+
+    children_thread -> fdt = curthread -> fdt;
+
+    return_value = children_thread -> t_pid;
+
+    return = 0;
+
+}
+
+struct pib_list * created_pid_list(void){
+    struct pib_list * pibl;
+    pibl = kmalloc(sizeof(struct pib_list));
+    pibl -> pid = array_create();
+    pibl -> position = 0;
+    int i = 0;
+    int j = sizeof(pibl -> pid) / sizeof(int);
+    for (i = 0 ; i < j ; i++){
+
+        pibl -> pid[i] = 0;
+
+    }
+    return pibl;
+}
+
+int add_pid_to_pib_list(void){
+
+    if (my_pid_list == null){
+        my_pid_list = created_pid_list();
+        my_pid_list -> position = 0;
+        my_pid_list -> pid[0] = 1;
+        return my_pid_list ->position;
+    }else{
+
+        if (my_pid_list -> position == MAX_PID - 1){
+            int result;
+            result  = array_setsize(my_pid_list -> pid,my_pid_list -> position + MAX_PID);
+            if (result){
+                return ENOMEM;
+            }
+            MAX_PID = MAX_PID + my_pid_list -> position;
+        }
+        my_pid_list -> pid[position + 1] = 1;
+        my_pid_list -> position = my_pid_list -> position + 1;
+        return my_pid_list -> position;
+    }
+}
+
+bool pid_exit(int a_pid){
+
+    if (a_pid >= MAX_PID){
+        return false;
+    }else{
+
+        if (my_pid_list -> pid[a_pid] == 1){
+            return true;
+        }else{
+            return false;
+        }
+    }
+}
+
+int remove_one_pid(int a_pid){
+    if (my_pid_list - > pid[a_pid] == 1){
+        my_pid_list -> pid[a_pid] = 0;
+        return 0;
+    }else{
+        return 0;
+    }
+}
+
+int delete_pid(void){
+
+    kfree(my_pid_list -> pid);
+    kfree(my_pid_list);
+    return 0;
+
+}
+#endif
