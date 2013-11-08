@@ -271,7 +271,7 @@ thread_destroy(struct thread *thread)
 	#if OPT_A2
 		fd_table_destroy(thread->fdt);
 	#endif
-		
+
 	kfree(thread->t_name);
 	kfree(thread);
 
@@ -285,19 +285,6 @@ thread_destroy(struct thread *thread)
  * The list of zombies is per-cpu.
  */
 
-#if OPT_A2
-	void
-	exorcise(void)
-	{
-		struct thread *z;
-
-		while ((z = threadlist_remhead(&curcpu->c_zombies)) != NULL) {
-			KASSERT(z != curthread);
-			KASSERT(z->t_state == S_ZOMBIE);
-			thread_destroy(z);
-		}
-	}
-#else
 static
 void
 exorcise(void)
@@ -310,7 +297,6 @@ exorcise(void)
 		thread_destroy(z);
 	}
 }
-#endif
 
 /*
  * On panic, stop the thread system (as much as is reasonably
@@ -1239,3 +1225,4 @@ interprocessor_interrupt(void)
 	curcpu->c_ipi_pending = 0;
 	spinlock_release(&curcpu->c_ipi_lock);
 }
+

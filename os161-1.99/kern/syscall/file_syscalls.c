@@ -173,8 +173,8 @@ void sys__exit(int exitcode){
 		if (rm_fd)
 		fd_destroy(rm_fd);
 	}
-	exorcise();
 	thread_exit();
 	return;
 	(void)exitcode;
 }	
+
