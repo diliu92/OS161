@@ -2,179 +2,216 @@
 #include <file_syscalls.h>
 #include <vfs.h>
 #include <proc.h>
-#include <kern/fcntl.h>	
+#include <kern/fcntl.h>
 #include <copyinout.h>
 
 struct fd_table *curfdt;
 int DEADBEEF = 0xdeadbeef;
 
-// open
+// Open the file
 int sys_open(const char *filename, int flags, int mode, int *return_val){
-	struct vnode *v;
-	int result;
-	struct file_des *fd;
+        struct vnode *v;
+        int result;
+        struct file_des *fd;
 
-	// kprintf("In open;\n");
-	if (filename == NULL){
-	}
-	
-	// Check for invalid user address space
-	int * temp_pt = kmalloc(sizeof(*filename));
-	result = copyin((userptr_t)filename, temp_pt, sizeof(*filename));
-	kfree(temp_pt);
-	if (result == EFAULT){
-		return result;
-	}
+        if (filename == NULL){
+                // Empty filename
+                return -1;
+        }
 
-	result = vfs_open((char*)filename, flags, mode, &v);
+        if (flags == O_APPEND) {
+                // Block user from open a file in O_APPEND mode
+                *return_val = EAGAIN;
+                return -1;
+        }
+        // Check for invalid user address space
+        int * temp_pt = kmalloc(sizeof(*filename));
+        result = copyin((userptr_t)filename, temp_pt, sizeof(*filename));
+        kfree(temp_pt);
+        if (result == EFAULT){
+                *return_val=EFAULT;
+                return -1;
+        }
 
-	if (result) {
-		return result;
-	}
+        // Open the file with name filename
+        result = vfs_open((char*)filename, flags, mode, &v);
 
-	// kprintf("Creating fd;\n");
-	fd = fd_create(v, flags, 0);
-	if (fd == NULL){
-		return -2;
-	}
+        // If failed, return errno
+        if (result) {
+                *return_val = result;
+                return -1;
+        }
 
-	curfdt = curthread->fdt;
-	int new_fd = (int)fd_table_add_fd(curfdt, fd);
+        fd = fd_create(v, flags, 0);
 
-	if (new_fd == -1){
-		return 28;
-		// Open too many files.
-	}
+        // Failure on creating fd
+        if (fd == NULL){
+                return -1;
+        }
 
-	*return_val = new_fd;
+        curfdt = curthread->fdt;
+        int new_fd = (int)fd_table_add_fd(curfdt, fd);
 
-	// vfs_close(v);
-	return 0;
+        // Open too many files.
+        if (new_fd == -1){
+                *return_val = EMFILE;
+                return -1;
+        }
+
+        // Store return value
+        *return_val = new_fd;
+
+        return 0;
 }
 
-// read
+
+// Read from the file
 int
 sys_read(int fd, void *buf, size_t buflen, int *return_val){
-	if (fd == DEADBEEF){
-		return 30;		
-	}
-	// kprintf("In Read \n");
-	curfdt = curthread->fdt;
-	struct file_des *file_d;
-	file_d = array_get(curfdt->fds, fd);
-	if ((file_d == NULL) || (file_d->flag == 1)){
-		return 30;
-		// DEBUG mode is not opened or is write only
-	}
-	else {
-		struct iovec iov;
-		struct uio u;
-		int result;
+        // If at address deadbeef
+        if (fd == DEADBEEF){
+                *return_val = EBADF;
+                return -1;
+        }
 
-		iov.iov_ubase = buf;
-		iov.iov_len = buflen;
+        struct file_des *file_d;
+        file_d = array_get(curthread->fdt->fds, fd);
 
-		u.uio_iov = &iov;
-		u.uio_iovcnt = 1;
-		u.uio_offset = file_d->offset;
-		u.uio_resid = buflen;
-		u.uio_segflg = UIO_USERSPACE;
-		u.uio_rw = UIO_READ;
-		u.uio_space = curproc_getas();
+        // If fild_d is NULL or is write only
+        if ((file_d == NULL) || (file_d->flag == 1)){
+                *return_val=EBADF;
+                return -1;
+                // DEBUG file is not opened or is write only
+        }
+        else {
+                struct iovec iov;
+                struct uio u;
+                int result;
 
-		result = VOP_READ(file_d->vnode, &u);
+                // Keeping track of blocks of data for I/O
+                iov.iov_ubase = buf;
+                iov.iov_len = buflen;
 
-		if (result){
-			return result;
-		}
+                // Data region to store data read by VOP_READ below
+                u.uio_iov = &iov;
+                u.uio_iovcnt = 1;
+                u.uio_offset = file_d->offset;
+                u.uio_resid = buflen;
+                u.uio_segflg = UIO_USERSPACE;
+                u.uio_rw = UIO_READ;
+                u.uio_space = curproc_getas();
 
-		file_d->offset = u.uio_offset;
-		if (u.uio_resid == 0){
-			*return_val = buflen;
-		}
-		else {
-			*return_val = buflen-u.uio_resid;
-		}
-	}
-	return 0;
+                // Read from fd
+                result = VOP_READ(file_d->vnode, &u);
+
+                // If failed, return errno through return_val
+                if (result){
+                        *return_val = result;
+                        return -1;
+                }
+
+                // The fd's offset now includes the amount of data successfully read
+                file_d->offset = u.uio_offset;
+
+                // If finish read, return value (number of bytes read) will equal to the buflen
+                if (u.uio_resid == 0){
+                        *return_val = buflen;
+                }
+                // If stopped during reading, return value will equal to buflen subtract the
+                // bytes left to read
+                else {
+                        *return_val = buflen-u.uio_resid;
+                }
+        }
+        return 0;
 }
 
-// write
+// Write to the file
 int
 sys_write(int fd, const void *buf, size_t nbytes, int *return_val){
-	if (fd == DEADBEEF){
-		return 30;		
-	}
-	curfdt = curthread->fdt;
-	struct file_des *file_d;
-	file_d = array_get(curfdt->fds,fd);
-	if ((file_d == NULL) || (file_d->flag == 0)){
-		return 30;
-		// DEBUG mode is not opened or is read only
-	}
-	else {
-	// kprintf("In Write\n");
-		struct iovec iov;
-		struct uio u;
-		int result;
+        // If at address deadbeef
+        //kprintf(" Entering sys_write\n");
+        if (fd == DEADBEEF){
+                *return_val = EBADF;
+                return -1;
+        }
+        curfdt = curthread->fdt;
+        struct file_des *file_d;
+        file_d = array_get(curfdt->fds,fd);
 
-		iov.iov_ubase = (void*)buf;
-		iov.iov_len = nbytes;
+        // If fild_d is NULL or is read only
+        if ((file_d == NULL) || (file_d->flag == 0)){
+                *return_val = EBADF;
+                return -1;
+                // DEBUG mode is not opened or is read only
+        }
+        else {
+                struct iovec iov;
+                struct uio u;
+                int result;
 
-		u.uio_iov = &iov;
-		u.uio_iovcnt = 1;
-		u.uio_offset = file_d->offset;
-		u.uio_resid = nbytes;
-		u.uio_segflg = UIO_USERSPACE;
-		u.uio_rw = UIO_WRITE;
-		u.uio_space = curproc_getas();
+                // Keeping track of blocks of data for I/O
+                iov.iov_ubase = (void*)buf;
+                iov.iov_len = nbytes;
 
-		result = VOP_WRITE(file_d->vnode, &u);
+                // Data region to store data to be write to fd by VOP_WRITE below
+                u.uio_iov = &iov;
+                u.uio_iovcnt = 1;
+                u.uio_offset = file_d->offset;
+                u.uio_resid = nbytes;
+                u.uio_segflg = UIO_USERSPACE;
+                u.uio_rw = UIO_WRITE;
+                u.uio_space = curproc_getas();
 
-		if (result){
-			return result;
-		}
+                // Write to fd
+                result = VOP_WRITE(file_d->vnode, &u);
 
-		file_d->offset = u.uio_offset;
-		if (u.uio_resid == 0){
-			*return_val = nbytes;
-		}
-		else {
-			*return_val = nbytes-u.uio_resid;
-		}
-	}
-	return 0;
+                // If failed, return errno through return_val
+                if (result){
+                        *return_val = result;
+                        return -1;
+                }
+
+                // The fd's offset now includes the amount of data successfully write
+                file_d->offset = u.uio_offset;
+
+                // If finish write, return value (number of bytes wrote) will equal to the buflen
+                if (u.uio_resid == 0){
+                        *return_val = nbytes;
+                }
+                // If stopped during writing, return value will equal to buflen subtract the
+                // bytes left to write
+                else {
+                        *return_val = nbytes-u.uio_resid;
+                }
+        }
+        //kprintf("Leaving sys_write\n");
+        return 0;
 }
 
-// close
+// Close the file
 int
-sys_close(int fd){
-	// kprintf("In close\n");
-	if (fd == DEADBEEF){
-		return 30;		
-	}
-	int result;
-	curfdt = curthread->fdt;
-	if (fd > fd_table_fd_nums(curfdt)){
-		return 30;
-		// Fd number exceed maximum file nums
-	}
-	result = fd_table_rm_fd(curfdt,fd);
-	if (result){
-		return result;
-	}
-	return 0;
+sys_close(int fd, int *return_val){
+        // If at address deadbeef
+        if (fd == DEADBEEF){
+                *return_val = EBADF;
+                return -1;
+        }
+
+        int result;
+        curfdt = curthread->fdt;
+        if (fd > fd_table_fd_nums(curfdt)){
+                *return_val = EBADF;
+                return -1;
+                // Fd number exceed maximum file nums
+        }
+        result = fd_table_rm_fd(curfdt,fd);
+
+        // If failed, return errno through return_val
+        if (result){
+                *return_val = result;
+                return -1;
+        }
+
+        return 0;
 }
-
-void sys__exit(int exitcode){
-	struct file_des *rm_fd;
-	for (int i=0; i<(int)array_num(curthread->fdt->fds); i++){
-		rm_fd = array_get(curthread->fdt->fds,i);
-		if (rm_fd)
-		fd_destroy(rm_fd);
-	}
-	thread_exit();
-	return;
-	(void)exitcode;
-}	
-

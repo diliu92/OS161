@@ -39,7 +39,10 @@
 #include "opt-A2.h"
 
 #if OPT_A2
-#include <fd_table.h>
+	#include <fd_table.h>
+	#include <syscall.h>
+ 	//#include <pid.h>
+ 	#include <proc_syscalls.h>
 #endif
 
 #include <array.h>
@@ -60,15 +63,6 @@ struct cpu;
 
 /* Macro to test if two addresses are on the same kernel stack */
 #define SAME_STACK(p1, p2)     (((p1) & STACK_MASK) == ((p2) & STACK_MASK))
-
-#if OPT_A2
-#define START_PID 0;
-
-struct pid_list{
-    int * pid;
-    int position;
-};
-#endif
 
 /* States a thread can be in. */
 typedef enum {
@@ -121,11 +115,10 @@ struct thread {
 
 	/* add more here as needed */
 	#if OPT_A2
+	 	// New field of type fd_table, stores the thread's array of file descriptors
 		struct fd_table *fdt;
-		int t_pid;
-		int t_parent_pid
+		pid_t pid;
 	#endif
-
 };
 
 /*
@@ -189,16 +182,8 @@ void schedule(void);
 void thread_consider_migration(void);
 
 #if OPT_A2
-int my_fork(struct trapframe *my_tf, int *return_value);
-
-struct pib_list * created_pid_list(void);
-int add_pid_to_pib_list(void);
-
-bool pid_exit(int a_pid);
-
-int remove_one_pid(int a_pid);
-
-int delete_pid(void);
+int sys_fork(struct trapframe *tf, int *return_value);
+int sys_execv(const char *progname, char **args, int *return_value);
 #endif
 
 #endif /* _THREAD_H_ */

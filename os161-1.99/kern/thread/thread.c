@@ -55,6 +55,11 @@
 
 #if OPT_A2
 #include <fd_table.h>
+#include <proc_syscalls.h>
+#include <pid.h>
+#include <copyinout.h>
+#include <limits.h>
+#include <vfs.h>
 #endif
 
 #include "opt-synchprobs.h"
@@ -78,15 +83,6 @@ static struct cpuarray allcpus;
 /* Used to wait for secondary CPUs to come online. */
 static struct semaphore *cpu_startup_sem;
 
-#if OPT_A2
-int MAX_PID = 100;
-
-
-struct pid_list *my_pid_list;
-my_pid_list = NULL;
-
-struct lock *my_lock;
-#endif
 ////////////////////////////////////////////////////////////
 
 /*
@@ -165,11 +161,10 @@ thread_create(const char *name)
 	thread->t_iplhigh_count = 1; /* corresponding to t_curspl */
 
 	/* If you add to struct thread, be sure to initialize here */
-	thread -> t_pid = add_pid_to_list();
-	thread -> t_parent_pid = 0;
-
 	#if OPT_A2
+		// Create the thread's fd table
 		thread->fdt = fd_table_create();
+		thread->pid = add_proc_info();
 	#endif
 
 	return thread;
@@ -278,10 +273,6 @@ thread_destroy(struct thread *thread)
 
 	/* sheer paranoia */
 	thread->t_wchan_name = "DESTROYED";
-
-	#if OPT_A2
-		fd_table_destroy(thread->fdt);
-	#endif
 
 	kfree(thread->t_name);
 	kfree(thread);
@@ -533,8 +524,9 @@ thread_fork(const char *name,
 	newthread->t_cpu = curthread->t_cpu;
 
 	#if OPT_A2
-		// newthread->fdt = fd_table_create();
-		newthread->fdt = fd_table_init(newthread->fdt);
+		// Initialize the fd table by adding std in, std out and std err fds
+ 		int fd_init;
+		fd_init = fd_table_init(newthread->fdt);
 	#endif
 
 	/* Attach the new thread to its process */
@@ -814,6 +806,11 @@ thread_exit(void)
 
 	cur = curthread;
 
+	#if OPT_A2
+		// Destroy the thread's fd table
+		fd_table_destroy(cur->fdt);
+	#endif
+
 	/*
 	 * Detach from our process. You might need to move this action
 	 * around, depending on how your wait/exit works.
@@ -830,11 +827,6 @@ thread_exit(void)
         splhigh();
 	thread_switch(S_ZOMBIE, NULL);
 	panic("The zombie walks!\n");
-
-	#if OPT_A2
-		fd_table_destroy(cur->fdt);
-	#endif
-
 }
 
 /*
@@ -1238,203 +1230,218 @@ interprocessor_interrupt(void)
 }
 
 #if OPT_A2
-int my_fork(struct trapframe *my_tf, int *return_value){
+int sys_fork(struct trapframe *tf, int *return_value){
+	struct thread *child_thread;
 
-    struct thread *children_thread;
+    child_thread = thread_create(curthread->t_name);
 
-    my_lock = lock_create(curthread -> t_name);
-
-    lock_acquire(my_lock);
-
-    children_thread = thread_create(curthread -> name);
-
-    lock_release(my_lock);
-
-    if (children_thread == NULL){
-        return_value = -1;
-        thread_destroy(children_thread);
-        return ENOMEM;
+    if (child_thread == NULL){
+        *return_value = ENOMEM;
+        thread_destroy(child_thread);
+        return -1;
     }
 
-    children_thread -> t_stack = (void*)kmalloc(STACK_SIZE);
+    struct trapframe *new_trap;
 
-    if (children_thread -> t_stack == NULL){
+    new_trap = kmalloc(sizeof(struct trapframe *));
 
-        return_value = -1;
-        thread_destroy(children_thread);
-        return ENOMEN;
+    memcpy(new_trap, tf,(sizeof(struct trapframe *)));
+
+
+    child_thread -> t_stack = kmalloc(STACK_SIZE);
+
+    if (child_thread -> t_stack == NULL){
+
+        *return_value = ENOMEM;
+        thread_destroy(child_thread);
+        return -1;
     }
 
-    thread_checkstack_init(children_thread);
+    thread_checkstack_init(child_thread);
 
-    //copy file state, but I do not know how to write it
-    //ask miss xiao lin lin please
-    children_thread -> fdt = curthread -> fdt;
+    child_thread->fdt = fd_table_dup(curthread->fdt);
 
-    if (children_thread -> fdt == NULL){
+    if (child_thread->fdt == NULL){
 
-        return_value = -1;
-        thread_destroy(children_thread);
-        return ENOMEM;
+        *return_value = ENOMEM;
+        thread_destroy(child_thread);
+        return -1;
     }
+
+    if (child_thread->pid == -1){
+    	*return_value = EMPROC;
+    	thread_destroy(child_thread);
+    	return -1;
+    }
+
     int result;
 
-    //just try
+    memcpy(child_thread->t_stack, tf,(sizeof(struct trapframe *)));
 
-    /*
-     if ((uintptr_t)dst % sizeof(long) == 0 &&
-     (uintptr_t)src % sizeof(long) == 0 &&
-     len % sizeof(long) == 0) {
+    child_thread->t_context = curthread->t_context;
 
-     long *d = dst;
-     const long *s = src;
+    struct proc *proc;
 
-     for (i=0; i<len/sizeof(long); i++) {
-     d[i] = s[i];
-     }
-     }
-     else {
-     char *d = dst;
-     const char *s = src;
+    proc = proc_create_runprogram(curthread->t_proc->p_name);
 
-     for (i=0; i<len; i++) {
-     d[i] = s[i];
-     }
-     }
-     */
-
-    memcpy(children_thread -> t_stack, my_tf,(sizeof(struct trapframe)));
-
-    children_thread -> t_context = curthread -> t_context;
-
-    //struct process *pro;
-
-    struct proc *my_proc
-
-    my_proc = proc_create(curthread -> t_proc -> p_name);
-
-    if (my_proc == NULL){
-
-        return_value = -1;
-        thread_destroy(children_thread);
-        return ENOMEM;
-
+    if (proc == NULL){
+        *return_value = ENOMEM;
+        thread_destroy(child_thread);
+        return -1;
     }
 
-    my_proc -> p_lock = curthread -> t_proc -> p_lock;
+    proc->p_lock = curthread->t_proc->p_lock;
 
-    my_proc -> p_threads = curthread -> t_proc -> p_threads;
+    proc->p_threads = curthread->t_proc->p_threads;
 
-    my_proc -> p_cwd = curthread -> t_proc -> p_cwd;
+    proc->p_cwd = curthread->t_proc->p_cwd;
 
-    result = as_copy(curthread -> t_proc -> p_addrspace, my_proc -> p_addrspace);
+    result = as_copy(curthread->t_proc->p_addrspace, &proc->p_addrspace);
 
-    result = proc_addthread(my_proc, children_thread);
+    result = proc_addthread(proc, child_thread);
+
     if (result) {
-
-        return_value = -1;
-        thread_destroy(children_thread);
-        return ENOMEM;
+        *return_value = ENOMEM;
+        thread_destroy(child_thread);
+        return -1;
     }
 
-    if (childre_thread -> t_proc == NULL) {
+    if (child_thread->t_proc == NULL) {
 
-        childre_thread -> t_proc = curthread -> t_proc;
+        child_thread->t_proc = curthread->t_proc;
 
     }
 
+    child_thread->t_proc = child_thread->t_proc;
 
+    child_thread->t_iplhigh_count = child_thread->t_iplhigh_count + 1;
 
-    children_thread -> t_proc = children_thread -> t_proc;
-
-    children_thread -> tt_iplhigh_count = children_thread -> tt_iplhigh_count + 1;
-
-    thread_mak_runnable(children_thread , false);
-    //switchframe_init(newthread,enter_forked_process,(void *)&newthread->t_stack[16], 0);
-    result = thread_fork(curthread -> t_name, my_proc, my_fork, NULL, 0);
+    result = thread_fork(curthread->t_name, proc,(void *)enter_forked_process, new_trap, 0);
 
     if (result){
-     return_value = -1;
-     thread_destroy(children_thread);
-     return ENMEM;
+		*return_value = ENOMEM;
+		thread_destroy(child_thread);
+		return -1;
      }
 
-    children_thread -> t_parent_pid = curthread -> t_pid;
+    child_thread->fdt = curthread->fdt;
+    struct processInfo * child_pinfo = get_proc_details(child_thread->pid - PID_MIN);
+    child_pinfo->parent = sys_getpid();
+    *return_value = child_thread->pid;
 
-    children_thread -> fdt = curthread -> fdt;
+    kfree(new_trap);
 
-    return_value = children_thread -> t_pid;
 
-    return = 0;
-
-}
-
-struct pib_list * created_pid_list(void){
-    struct pib_list * pibl;
-    pibl = kmalloc(sizeof(struct pib_list));
-    pibl -> pid = array_create();
-    pibl -> position = 0;
-    int i = 0;
-    int j = sizeof(pibl -> pid) / sizeof(int);
-    for (i = 0 ; i < j ; i++){
-
-        pibl -> pid[i] = 0;
-
-    }
-    return pibl;
-}
-
-int add_pid_to_pib_list(void){
-
-    if (my_pid_list == null){
-        my_pid_list = created_pid_list();
-        my_pid_list -> position = 0;
-        my_pid_list -> pid[0] = 1;
-        return my_pid_list ->position;
-    }else{
-
-        if (my_pid_list -> position == MAX_PID - 1){
-            int result;
-            result  = array_setsize(my_pid_list -> pid,my_pid_list -> position + MAX_PID);
-            if (result){
-                return ENOMEM;
-            }
-            MAX_PID = MAX_PID + my_pid_list -> position;
-        }
-        my_pid_list -> pid[position + 1] = 1;
-        my_pid_list -> position = my_pid_list -> position + 1;
-        return my_pid_list -> position;
-    }
-}
-
-bool pid_exit(int a_pid){
-
-    if (a_pid >= MAX_PID){
-        return false;
-    }else{
-
-        if (my_pid_list -> pid[a_pid] == 1){
-            return true;
-        }else{
-            return false;
-        }
-    }
-}
-
-int remove_one_pid(int a_pid){
-    if (my_pid_list - > pid[a_pid] == 1){
-        my_pid_list -> pid[a_pid] = 0;
-        return 0;
-    }else{
-        return 0;
-    }
-}
-
-int delete_pid(void){
-
-    kfree(my_pid_list -> pid);
-    kfree(my_pid_list);
     return 0;
 
 }
+
+int sys_execv(const char *progname, char **args, int *return_value){
+
+        int num = 0;
+        struct addrspace *as;
+        struct vnode *v;
+        vaddr_t entrypoint, stackptr;
+        int result;
+        int length;
+
+        if (progname == NULL){
+                *return_value = ENODEV;
+                return -1;
+        }
+        while (args[num] != NULL){
+                num = num + 1;
+        }
+
+
+        char *pathname;
+        size_t *fuck;
+        pathname = (char *)kmalloc(sizeof PATH_MAX);
+        result = copyinstr((userptr_t)progname, pathname, PATH_MAX, fuck);
+
+        int i = 0;
+        char **argv;
+        argv = kmalloc(sizeof PATH_MAX);
+        for (i = 0; i < num; i ++){
+                argv[i] = (char *)kmalloc(sizeof ARG_MAX);
+        }
+
+        for (i = 0; i < num; i++){
+                length = strlen(args[i]);
+                copyinstr((userptr_t)args[i], argv[i], length, fuck);
+        }
+
+
+        //all commands are copide from runprogram.c
+        /* Open the file. */
+        result = vfs_open(pathname, O_RDONLY, 0, &v);
+        if (result) {
+
+                *return_value = result;
+                return -1;
+        }
+
+        /* We should be a new process. */
+        KASSERT(curproc_getas() == NULL);
+
+        /* Create a new address space. */
+        as = as_create();
+        if (as ==NULL) {
+                vfs_close(v);
+                *return_value = ENOMEM;
+                return -1;
+        }
+
+        /* Switch to it and activate it. */
+        curproc_setas(as);
+        as_activate();
+
+        /* Load the executable. */
+        result = load_elf(v, &entrypoint);
+        if (result) {
+                /* p_addrspace will go away when curproc is destroyed */
+                vfs_close(v);
+                *return_value = result;
+                return -1;
+        }
+
+        /* Done with the file now. */
+        vfs_close(v);
+
+        /* Define the user stack in the address space */
+        result = as_define_stack(as, &stackptr);
+        if (result) {
+                /* p_addrspace will go away when curproc is destroyed */
+                *return_value = result;
+                return -1;
+        }
+
+        int argc = num;
+        vaddr_t addr[argc];
+
+        for (i = num - 1; i >= 0 ; i--){
+                length = strlen(args[i]);
+                stackptr = stackptr - (length + 4 - (length % 4));
+                result = copyoutstr(args[i], (userptr_t) stackptr,length, fuck);
+
+                addr[i] = stackptr;
+
+        }
+        int shift_stack = argc;
+        for (i = num - 1; i >= 0; i--){
+                stackptr = stackptr - shift_stack;
+                result = copyout(args[i],(userptr_t)stackptr, length);
+        }
+
+
+        /* Warp to user mode. */
+        enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
+                          stackptr, entrypoint);
+
+        /* enter_new_process does not return. */
+        panic("enter_new_process returned\n");
+        *return_value = EINVAL;
+        return -1;
+}
+
 #endif

@@ -1,17 +1,20 @@
 #include "opt-A2.h"
 #include <file_des.h>
-// File descriptor
 
+// File descriptor Operations
+
+// Create a new file descriptor
 struct file_des *fd_create(struct vnode *v, int flg, off_t os){
-	struct file_des *fd;
-	fd = kmalloc(sizeof(struct file_des));
+        struct file_des *fd;
+        fd = kmalloc(sizeof(struct file_des));
 
-	if (fd == NULL){
+    // If malloc failed
+        if (fd == NULL){
         kfree(fd);
-		return NULL;
-	}
+                return NULL;
+        }
     else {
-        fd->vnode = v; 
+        fd->vnode = v;
         fd->flag = flg;
         fd->offset = os;
         // fd->opencount = 1;
@@ -19,9 +22,10 @@ struct file_des *fd_create(struct vnode *v, int flg, off_t os){
     }
 }
 
+// Destroy a file descriptor
 void fd_destroy(struct file_des *fd){
     if (fd != NULL){
         kfree(fd->vnode);
-    }    
+    }
     kfree(fd);
 }

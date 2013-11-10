@@ -1,129 +1,147 @@
 #include "opt-A2.h"
-#include <fd_table.h>	
+#include <fd_table.h>        
 #include <limits.h>
 #include <current.h>
 #include <vfs.h>
 #include <array.h>
 
+// Create a fd table
 struct fd_table *fd_table_create(void){
-	
-	struct fd_table *fdt;
-	
-	fdt = kmalloc(sizeof(struct fd_table));
+        
+        struct fd_table *fdt;        
+        fdt = kmalloc(sizeof(struct fd_table));
 
-	if (fdt == NULL) {
-		return NULL;
-	}
+        // If malloc failed
+        if (fdt == NULL) {
+                return NULL;
+        }
 
-	fdt->fds = array_create();
-	return fdt;
+        fdt->fds = array_create();
+        fdt->num_fd = 0;
+        return fdt;
 }
 
+// Initialize a fd table
+int fd_table_init(struct fd_table *fdt) {
+        int result;
+        unsigned int index;
 
-struct fd_table *fd_table_init(struct fd_table *fdt) {
-	int result;
-	unsigned int index;
-	// struct fd_table *fdt = curthread->fdt;
+        // STD_IN
+        char *console1 = NULL;
+        console1 = kstrdup("con:");
+        struct vnode *v1;
+        result = vfs_open((char*)console1, O_RDONLY, 0, &v1);
+        struct file_des *fd1 = fd_create(v1,O_RDONLY,0);
+        
+        kfree(console1);
+        array_add(fdt->fds, fd1, &index);
+        fdt->num_fd ++;
 
-	char *console1 = NULL;
-	console1 = kstrdup("con:");
-	struct vnode *v1;
-	result = vfs_open((char*)console1, O_RDONLY, 0, &v1);
-	struct file_des *fd1 = fd_create(v1,O_RDONLY,0);
-	
-	kfree(console1);
-	array_add(fdt->fds, fd1, &index);
+        // STD_OUT
+        char *console2 = NULL;
+        console2 = kstrdup("con:");
+        struct vnode *v2;
+        result = vfs_open((char*)console2, O_WRONLY, 0, &v2);
+        struct file_des *fd2 = fd_create(v2,O_WRONLY,0);
+        
+        kfree(console2);
+        array_add(fdt->fds, fd2, &index);
+        fdt->num_fd ++;
 
-	char *console2 = NULL;
-	console2 = kstrdup("con:");
-	struct vnode *v2;
-	result = vfs_open((char*)console2, O_WRONLY, 0, &v2);
-	struct file_des *fd2 = fd_create(v2,O_WRONLY,0);
-	
-	kfree(console2);
-	array_add(fdt->fds, fd2, &index);
+        // STD_ERR
+        char *console3= NULL;
+        console3 = kstrdup("con:");
+        struct vnode *v3;
+        result = vfs_open((char*)console3, O_WRONLY, 0, &v3);
+        struct file_des *fd3 = fd_create(v3,O_WRONLY,0);
+        
+        kfree(console3);
+        array_add(fdt->fds, fd3, &index);
+        fdt->num_fd ++;
 
-	char *console3= NULL;
-	console3 = kstrdup("con:");
-	struct vnode *v3;
-	result = vfs_open((char*)console3, O_WRONLY, 0, &v3);
-	struct file_des *fd3 = fd_create(v3,O_WRONLY,0);
-	
-	kfree(console3);
-	array_add(fdt->fds, fd3, &index);
-
-	return fdt;
+        return 0;
 }
 
-
+// Destroy a fd table
 void fd_table_destroy(struct fd_table *fdt){
-	int dec =0;
-	for (int i=0; i<(int)array_num(fdt->fds); i++){
-		struct file_des *fd = array_get(fdt->fds,i);
-		kfree(fd);
-		dec = i+1;
-	}
-	(fdt->fds)->num -= dec;
-	array_destroy(fdt->fds);
-	kfree(fdt);
+        // Free all fds in fd table
+        int dec =0;
+        for (int i=0; i<(int)array_num(fdt->fds); i++){
+                struct file_des *fd = array_get(fdt->fds,i);
+                kfree(fd);
+                dec = i+1;
+        }
+        (fdt->fds)->num -= dec;
+        array_destroy(fdt->fds);
+
+        // Free fd table
+        kfree(fdt);
 }
 
-
+// Duplicate a fd table
 struct fd_table *fd_table_dup(struct fd_table *fdt){
-	struct fd_table *dup_fdt;
-	dup_fdt = kmalloc(sizeof(struct fd_table));
-	dup_fdt->fds = fdt->fds;
-	struct file_des *fd;
-	int len = array_num(dup_fdt->fds);
-	for (int i=0; i<len; i++){
-		fd = array_get(dup_fdt->fds,i);
-		vnode_incref(fd->vnode);
-	} 
-	return dup_fdt;
+        struct fd_table *dup_fdt;
+        dup_fdt = kmalloc(sizeof(struct fd_table));
+
+        // If malloc failed
+        if (dup_fdt == NULL) {
+                return NULL;
+        }
+        dup_fdt->fds = fdt->fds;
+        dup_fdt->num_fd = fdt->num_fd;
+        struct file_des *fd;
+        int len = array_num(dup_fdt->fds);
+
+        // Increase each vnode's refcounter by 1
+        for (int i=0; i<len; i++){
+                fd = array_get(dup_fdt->fds,i);
+                vnode_incref(fd->vnode);
+        } 
+        return dup_fdt;
 }
 
-
+// Add a fd to fd table
 int fd_table_add_fd(struct fd_table *fdt, struct file_des *fd){
-	unsigned *index_ret = NULL;
-	unsigned int fd_index;
-	fd_index = array_num(fdt->fds);
-	if (fd_index == OPEN_MAX-1){
-		return -1;
-	}
-	// for (int i=0; i<(int)fd_index; i++){
-	// 	struct file_des *old_fd = array_get(fdt->fds,i);
-	// 	if ((old_fd!=NULL) && (old_fd->vnode == fd->vnode)){
-	// 		old_fd->opencount ++;
-	// 		fd->opencount ++;
-	// 	}
-	// }
-	array_add(fdt->fds, fd, index_ret);
-	return (int)fd_index;
+        unsigned *index_ret = NULL;
+        unsigned int fd_index;
+        fd_index = array_num(fdt->fds);
+
+        // When open too many files
+        if (fdt->num_fd >= OPEN_MAX-1){
+                return -1;
+        }
+        array_add(fdt->fds, fd, index_ret);
+        fdt->num_fd ++;
+        return (int)fd_index;
 }
 
-
+// Get a fd from fd table
 struct file_des *fd_table_get_fd(struct fd_table *fdt, int fd){
-	return array_get(fdt->fds, fd);
+        if (fd >= (int)array_num(fdt->fds)){
+                // Debug error: invalide fd ID;
+        }
+        return array_get(fdt->fds, fd);
 }
 
+// Remove a fd from fd table
 int fd_table_rm_fd(struct fd_table *fdt, int fd){
-	struct file_des *rm_fd = array_get(fdt->fds,fd);
-	if ((array_num(fdt->fds)!=0) && (rm_fd!=NULL)){
-		// for (int i=0; i<(int)array_num(fdt->fds); i++){
-		// 	struct file_des *old_fd = array_get(fdt->fds,i);
-		// 	if ((old_fd!=NULL) && (old_fd->vnode == rm_fd->vnode)){
-		// 		old_fd->opencount --;
-		// 	}
-		// }
-		struct vnode *close_v = (fd_table_get_fd(fdt,fd))->vnode;
-		vfs_close(close_v);
-		array_set(fdt->fds, fd, NULL);
-		return 0;
-	}
-	return 1;
+        struct file_des *rm_fd = array_get(fdt->fds,fd);
+        if ((array_num(fdt->fds)!=0) && (rm_fd!=NULL)){
+
+                // Remove fd by close its vnode and set it to NULL
+                struct vnode *close_v = (fd_table_get_fd(fdt,fd))->vnode;
+                vfs_close(close_v);
+                array_set(fdt->fds, fd, NULL);
+                fdt->num_fd --;
+                return 0;
+        }
+        return 1;
 }
 
-
+// Return the number of fds in fd table
 int fd_table_fd_nums(struct fd_table *fdt){
-	return fdt->fds->num;
+        if (fdt == NULL){
+                return 0;
+        }
+        return fdt->fds->num;
 }

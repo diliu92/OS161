@@ -1,6 +1,3 @@
 dir ../os161-1.99/kern/compile/ASST2
 target remote unix:.sockets/gdb
-b sys_open
-b sys_close
-b sys_read
-b sys_write
+b fd_table_destroy

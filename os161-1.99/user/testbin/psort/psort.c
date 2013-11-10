@@ -186,6 +186,7 @@ complainx(const char *fmt, ...)
 
 	/* Write the message in one go so it's atomic */
 	rc = write(STDERR_FILENO, buf, strlen(buf));
+	rc++;
 }
 
 static
@@ -203,6 +204,7 @@ complain(const char *fmt, ...)
 
 	/* Write the message in one go so it's atomic */
 	rc = write(STDERR_FILENO, buf, strlen(buf));
+	rc++;
 }
 
 ////////////////////////////////////////////////////////////
@@ -718,7 +720,7 @@ mergebins(void)
 			}
 
 			if (!ready[i]) {
-				result = doread("bin", infds[i], 
+				result = doread("bin", infds[i],
 						&val, sizeof(int));
 				if (result == 0) {
 					doclose("bin", infds[i]);
