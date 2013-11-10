@@ -60,6 +60,7 @@
 #include <copyinout.h>
 #include <limits.h>
 #include <vfs.h>
+#include <mips/trapframe.h>
 #endif
 
 #include "opt-synchprobs.h"
@@ -1232,89 +1233,81 @@ interprocessor_interrupt(void)
 #if OPT_A2
 int sys_fork(struct trapframe *tf, int *return_value){
 	struct thread *child_thread;
+	int result;
 
     child_thread = thread_create(curthread->t_name);
-
     if (child_thread == NULL){
         *return_value = ENOMEM;
-        thread_destroy(child_thread);
         return -1;
     }
 
-    struct trapframe *new_trap;
-
-    new_trap = kmalloc(sizeof(struct trapframe *));
-
-    memcpy(new_trap, tf,(sizeof(struct trapframe *)));
-
-
-    child_thread -> t_stack = kmalloc(STACK_SIZE);
-
-    if (child_thread -> t_stack == NULL){
-
+    struct trapframe *new_trap = kmalloc(sizeof(struct trapframe));
+    if (new_trap == NULL){
         *return_value = ENOMEM;
-        thread_destroy(child_thread);
         return -1;
     }
+    memcpy(new_trap, tf,(sizeof(struct trapframe)));
 
-    thread_checkstack_init(child_thread);
 
     child_thread->fdt = fd_table_dup(curthread->fdt);
-
     if (child_thread->fdt == NULL){
-
         *return_value = ENOMEM;
-        thread_destroy(child_thread);
         return -1;
     }
+
 
     if (child_thread->pid == -1){
     	*return_value = EMPROC;
-    	thread_destroy(child_thread);
     	return -1;
     }
 
-    int result;
+    child_thread -> t_stack = kmalloc(STACK_SIZE);
+    if (child_thread -> t_stack == NULL){
 
-    memcpy(child_thread->t_stack, tf,(sizeof(struct trapframe *)));
+        *return_value = ENOMEM;
+        return -1;
+    }
 
-    child_thread->t_context = curthread->t_context;
+    struct processInfo * child_pinfo = get_proc_details(child_thread->pid);
+    child_pinfo->parent = sys_getpid();
+    *return_value = child_thread->pid;
+
+    memcpy(child_thread->t_stack, curthread->t_stack,(sizeof(STACK_SIZE)));
+    thread_checkstack_init(child_thread);
+	thread_checkstack(child_thread);
+
+	child_thread->t_cpu = curthread->t_cpu;
 
     struct proc *proc;
 
     proc = proc_create_runprogram(curthread->t_proc->p_name);
-
     if (proc == NULL){
         *return_value = ENOMEM;
-        thread_destroy(child_thread);
         return -1;
     }
 
-    proc->p_lock = curthread->t_proc->p_lock;
-
-    proc->p_threads = curthread->t_proc->p_threads;
-
-    proc->p_cwd = curthread->t_proc->p_cwd;
-
-    result = as_copy(curthread->t_proc->p_addrspace, &proc->p_addrspace);
 
     result = proc_addthread(proc, child_thread);
 
     if (result) {
         *return_value = ENOMEM;
-        thread_destroy(child_thread);
+        return -1;
+    }   
+
+    result = as_copy(curthread->t_proc->p_addrspace, &(proc->p_addrspace));
+     if (result) {
+        *return_value = ENOMEM;
         return -1;
     }
 
-    if (child_thread->t_proc == NULL) {
+    proc->p_cwd = curthread->t_proc->p_cwd;
 
-        child_thread->t_proc = curthread->t_proc;
+    child_thread->t_iplhigh_count++;
 
-    }
+    switchframe_init(child_thread,(void *)enter_forked_process, new_trap,0);
+    thread_make_runnable(child_thread, false);
 
-    child_thread->t_proc = child_thread->t_proc;
-
-    child_thread->t_iplhigh_count = child_thread->t_iplhigh_count + 1;
+    /*
 
     result = thread_fork(curthread->t_name, proc,(void *)enter_forked_process, new_trap, 0);
 
@@ -1324,15 +1317,13 @@ int sys_fork(struct trapframe *tf, int *return_value){
 		return -1;
      }
 
-    child_thread->fdt = curthread->fdt;
-    struct processInfo * child_pinfo = get_proc_details(child_thread->pid - PID_MIN);
-    child_pinfo->parent = sys_getpid();
-    *return_value = child_thread->pid;
+     */
 
-    kfree(new_trap);
+    //kfree(new_trap);
 
 
     return 0;
+
 
 }
 

@@ -79,25 +79,30 @@ void fd_table_destroy(struct fd_table *fdt){
 }
 
 // Duplicate a fd table
-struct fd_table *fd_table_dup(struct fd_table *fdt){
-        struct fd_table *dup_fdt;
-        dup_fdt = kmalloc(sizeof(struct fd_table));
+struct fd_table *fd_table_dup(struct fd_table *src_fdt){
+        struct fd_table *dst_fdt = fd_table_create();
 
         // If malloc failed
-        if (dup_fdt == NULL) {
+        if (dst_fdt == NULL) {
                 return NULL;
         }
-        dup_fdt->fds = fdt->fds;
-        dup_fdt->num_fd = fdt->num_fd;
-        struct file_des *fd;
-        int len = array_num(dup_fdt->fds);
 
-        // Increase each vnode's refcounter by 1
-        for (int i=0; i<len; i++){
-                fd = array_get(dup_fdt->fds,i);
-                vnode_incref(fd->vnode);
+        dst_fdt->num_fd = src_fdt->num_fd;
+
+        int len = array_num(src_fdt->fds);
+        for (int i=0; i<len; i++){                
+                struct file_des *dst_fd = kmalloc(sizeof(struct file_des));
+                struct file_des *src_fd = array_get(src_fdt->fds,i);
+
+                dst_fd->vnode = src_fd->vnode;
+                dst_fd->flag = src_fd->flag;
+                dst_fd->offset= src_fd->offset;
+                vnode_incref(dst_fd->vnode); // Increase each vnode's refcounter by 1
+                
+                unsigned result_index;
+                array_add(dst_fdt->fds, dst_fd, &result_index);
         } 
-        return dup_fdt;
+        return dst_fdt;
 }
 
 // Add a fd to fd table

@@ -1,4 +1,3 @@
 dir ../os161-1.99/kern/compile/ASST2
 target remote unix:.sockets/gdb
-b sys_waitpid
-b sys_exit
+b add_proc_info

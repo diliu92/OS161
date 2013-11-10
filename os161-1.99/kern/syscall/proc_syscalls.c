@@ -17,34 +17,37 @@
 #include "opt-synchprobs.h"
 
 struct cv *wpcv = NULL;
+int loop =0;
 
 pid_t sys_getpid(void){
+	loop ++;
 	return curthread->pid;
 }
 
 int sys_waitpid(pid_t pid, int *status, int *options, int *ret){
 	if (options != 0){
 		*ret = EINVAL; //invalid option
-		goto error;
+		return -1;
 	}
-	int *dst;
+
+	int dst;
 	if (status == NULL ||
-		copyin((const_userptr_t)status, dst, sizeof(int *)) ||
+		copyin((const_userptr_t)status, &dst, 1) ||
 		(uintptr_t)status % sizeof(long) != 0){
 		*ret = EFAULT;	//invalid status
-		goto error;
+		return -1;
 	}
 
 	struct processInfo *pinfo = get_proc_details(pid);
 
 	if (pinfo == NULL){
 		*ret = ESRCH; //no such process
-		goto error;
+		return -1;
 	}
 
 	if (pinfo->parent != sys_getpid()){
 		*ret = ECHILD; //not child process
-		goto error;
+		return -1;
 	}
 
 	lock_acquire(pinfo->plock);
@@ -58,13 +61,12 @@ int sys_waitpid(pid_t pid, int *status, int *options, int *ret){
 	}
 	else{
 		*ret = ESRCH; //state == invalid
-		goto error;
-	}
-
-	return pid;
-	error:
 		lock_release(pinfo->plock);
 		return -1;
+	}
+
+	*ret = pid;
+	return 0;
 }
 
 void sys_exit (int exitcode){

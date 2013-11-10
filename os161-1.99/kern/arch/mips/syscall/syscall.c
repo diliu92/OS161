@@ -244,12 +244,11 @@ void
 enter_forked_process(struct trapframe *tf)
 {
 	#if OPT_A2
-        struct trapframe new_tf;
-        memcpy(&new_tf, tf,(sizeof(struct trapframe *)));
+        struct trapframe new_tf = *tf;
+    
         new_tf.tf_epc += 4;
-        tf->tf_a3 = 0;
-        tf->tf_v0 = 0;
-        as_activate();
+        new_tf.tf_a3 = 0;
+        new_tf.tf_v0 = 0;
         mips_usermode(&new_tf);
     #endif
 }
