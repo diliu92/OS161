@@ -1373,9 +1373,6 @@ int sys_execv(const char *progname, char **args, int *return_value){
             return -1;
         }
 
-        /* We should be a new process. */
-        // KASSERT(curproc_getas() == NULL);
-
         /* Create a new address space. */
         as = as_create();
         if (as ==NULL) {
