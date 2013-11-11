@@ -179,13 +179,13 @@ proc_create_runprogram(const char *name)
 
 	/* VFS fields */
 
-	spinlock_acquire(&curproc->p_lock);
+	// spinlock_acquire(&curproc->p_lock);
 	/* we don't need to lock proc->p_lock as we have the only reference */
 	if (curproc->p_cwd != NULL) {
 		VOP_INCREF(curproc->p_cwd);
 		proc->p_cwd = curproc->p_cwd;
 	}
-	spinlock_release(&curproc->p_lock);
+	// spinlock_release(&curproc->p_lock);
 
 	return proc;
 }
@@ -250,7 +250,7 @@ curproc_getas(void)
 {
 	struct addrspace *as;
 #ifdef UW
-        /* Until user processes are created, threads used in testing 
+        /* Until user processes are created, threads used in testing
          * (i.e., kernel threads) have no process or address space.
          */
 	if (curproc == NULL) {
