@@ -72,12 +72,17 @@ pid_t get_next_pid(void){
 }
 
 pid_t add_proc_info(void){
+	bool first = false;
 	if (proc_info_array == NULL){
 		create_proc_info_array();
+		first = true;
 	}
 	pid_t npid = get_next_pid();
 	struct processInfo * npinfo = procinfo_create();
 	npinfo->self = npid;
+	if (!first){
+		npinfo->parent = sys_getpid();
+	}
 	proc_info_array[npid - PID_MIN] = npinfo;
 	return npid;
 }

@@ -30,10 +30,10 @@ int sys_waitpid(pid_t pid, int *status, int *options, int *ret){
 		return -1;
 	}
 
-	int dst;
+	// int dst;
 	if (status == NULL ||
-		copyin((const_userptr_t)status, &dst, 1) ||
-		(uintptr_t)status % sizeof(long) != 0){
+		// copyin((const_userptr_t)status, &dst, 1) ||
+		(uintptr_t)status % 4 != 0){
 		*ret = EFAULT;	//invalid status
 		return -1;
 	}

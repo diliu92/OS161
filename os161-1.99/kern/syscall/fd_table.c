@@ -1,5 +1,5 @@
 #include "opt-A2.h"
-#include <fd_table.h>        
+#include <fd_table.h>
 #include <limits.h>
 #include <current.h>
 #include <vfs.h>
@@ -7,8 +7,8 @@
 
 // Create a fd table
 struct fd_table *fd_table_create(void){
-        
-        struct fd_table *fdt;        
+
+        struct fd_table *fdt;
         fdt = kmalloc(sizeof(struct fd_table));
 
         // If malloc failed
@@ -24,7 +24,7 @@ struct fd_table *fd_table_create(void){
 // Initialize a fd table
 int fd_table_init(struct fd_table *fdt) {
         int result;
-        unsigned int index;
+        unsigned index;
 
         // STD_IN
         char *console1 = NULL;
@@ -32,7 +32,7 @@ int fd_table_init(struct fd_table *fdt) {
         struct vnode *v1;
         result = vfs_open((char*)console1, O_RDONLY, 0, &v1);
         struct file_des *fd1 = fd_create(v1,O_RDONLY,0);
-        
+
         kfree(console1);
         array_add(fdt->fds, fd1, &index);
         fdt->num_fd ++;
@@ -43,7 +43,7 @@ int fd_table_init(struct fd_table *fdt) {
         struct vnode *v2;
         result = vfs_open((char*)console2, O_WRONLY, 0, &v2);
         struct file_des *fd2 = fd_create(v2,O_WRONLY,0);
-        
+
         kfree(console2);
         array_add(fdt->fds, fd2, &index);
         fdt->num_fd ++;
@@ -54,7 +54,7 @@ int fd_table_init(struct fd_table *fdt) {
         struct vnode *v3;
         result = vfs_open((char*)console3, O_WRONLY, 0, &v3);
         struct file_des *fd3 = fd_create(v3,O_WRONLY,0);
-        
+
         kfree(console3);
         array_add(fdt->fds, fd3, &index);
         fdt->num_fd ++;
@@ -90,7 +90,7 @@ struct fd_table *fd_table_dup(struct fd_table *src_fdt){
         dst_fdt->num_fd = src_fdt->num_fd;
 
         int len = array_num(src_fdt->fds);
-        for (int i=0; i<len; i++){                
+        for (int i=0; i<len; i++){
                 struct file_des *dst_fd = kmalloc(sizeof(struct file_des));
                 struct file_des *src_fd = array_get(src_fdt->fds,i);
 
@@ -98,17 +98,17 @@ struct fd_table *fd_table_dup(struct fd_table *src_fdt){
                 dst_fd->flag = src_fd->flag;
                 dst_fd->offset= src_fd->offset;
                 vnode_incref(dst_fd->vnode); // Increase each vnode's refcounter by 1
-                
+
                 unsigned result_index;
                 array_add(dst_fdt->fds, dst_fd, &result_index);
-        } 
+        }
         return dst_fdt;
 }
 
 // Add a fd to fd table
 int fd_table_add_fd(struct fd_table *fdt, struct file_des *fd){
         unsigned *index_ret = NULL;
-        unsigned int fd_index;
+        unsigned fd_index;
         fd_index = array_num(fdt->fds);
 
         // When open too many files
@@ -122,9 +122,6 @@ int fd_table_add_fd(struct fd_table *fdt, struct file_des *fd){
 
 // Get a fd from fd table
 struct file_des *fd_table_get_fd(struct fd_table *fdt, int fd){
-        if (fd >= (int)array_num(fdt->fds)){
-                // Debug error: invalide fd ID;
-        }
         return array_get(fdt->fds, fd);
 }
 

@@ -57,5 +57,15 @@ void enter_new_process(int argc, userptr_t argv, vaddr_t stackptr,
 
 int sys_reboot(int code);
 int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
+int sys_open(const char *filename, int flags, int mode, int *return_val);
+int sys_read(int fd, void *buf, size_t buflen, int *return_val);
+int sys_write(int fd, const void *buf, size_t nbytes, int *return_val);
+int sys_close(int fd, int *return_val);
+int sys_fork(struct trapframe *tf, int *return_value);
+int sys_execv(const char *progname, char **args, int *return_value);
+void sys__exit(int exitcode);
+pid_t sys_getpid(void);
+int sys_waitpid(pid_t pidid, int *status, int *options, int *ret_val);
+void sys_exit (int exitcode);
 
 #endif /* _SYSCALL_H_ */

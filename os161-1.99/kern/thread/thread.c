@@ -507,7 +507,6 @@ thread_fork(const char *name,
 	if (newthread == NULL) {
 		return ENOMEM;
 	}
-
 	/* Allocate a stack */
 	newthread->t_stack = kmalloc(STACK_SIZE);
 	if (newthread->t_stack == NULL) {
@@ -528,6 +527,9 @@ thread_fork(const char *name,
 		// Initialize the fd table by adding std in, std out and std err fds
  		int fd_init;
 		fd_init = fd_table_init(newthread->fdt);
+		if (newthread->pid == -1){
+	    	return EMPROC;
+	    }
 	#endif
 
 	/* Attach the new thread to its process */
@@ -1268,8 +1270,8 @@ int sys_fork(struct trapframe *tf, int *return_value){
         return -1;
     }
 
-    struct processInfo * child_pinfo = get_proc_details(child_thread->pid);
-    child_pinfo->parent = sys_getpid();
+    // struct processInfo * child_pinfo = get_proc_details(child_thread->pid);
+    // child_pinfo->parent = sys_getpid();
     *return_value = child_thread->pid;
 
     memcpy(child_thread->t_stack, curthread->t_stack,(sizeof(STACK_SIZE)));
@@ -1292,7 +1294,7 @@ int sys_fork(struct trapframe *tf, int *return_value){
     if (result) {
         *return_value = ENOMEM;
         return -1;
-    }   
+    }
 
     result = as_copy(curthread->t_proc->p_addrspace, &(proc->p_addrspace));
      if (result) {
@@ -1334,32 +1336,32 @@ int sys_execv(const char *progname, char **args, int *return_value){
         struct vnode *v;
         vaddr_t entrypoint, stackptr;
         int result;
-        int length;
-
-        if (progname == NULL){
-                *return_value = ENODEV;
-                return -1;
-        }
-        while (args[num] != NULL){
-                num = num + 1;
-        }
-
-
-        char *pathname;
-        size_t *fuck;
-        pathname = (char *)kmalloc(sizeof PATH_MAX);
-        result = copyinstr((userptr_t)progname, pathname, PATH_MAX, fuck);
+        size_t length;
 
         int i = 0;
         char **argv;
+        char *pathname;
+        size_t *s;
+
+        if (progname == NULL){
+            *return_value = ENODEV;
+            return -1;
+        }
+        while (args[num] != NULL){
+            num = num + 1;
+        }
+
+        pathname = (char *)kmalloc(sizeof PATH_MAX);
+        result = copyinstr((userptr_t)progname, pathname, PATH_MAX, s);
+
         argv = kmalloc(sizeof PATH_MAX);
         for (i = 0; i < num; i ++){
-                argv[i] = (char *)kmalloc(sizeof ARG_MAX);
+            argv[i] = (char *)kmalloc(sizeof ARG_MAX);
         }
 
         for (i = 0; i < num; i++){
-                length = strlen(args[i]);
-                copyinstr((userptr_t)args[i], argv[i], length, fuck);
+            length = strlen(args[i]);
+            copyinstr((userptr_t)args[i], argv[i], length, s);
         }
 
 
@@ -1367,20 +1369,19 @@ int sys_execv(const char *progname, char **args, int *return_value){
         /* Open the file. */
         result = vfs_open(pathname, O_RDONLY, 0, &v);
         if (result) {
-
-                *return_value = result;
-                return -1;
+            *return_value = result;
+            return -1;
         }
 
         /* We should be a new process. */
-        KASSERT(curproc_getas() == NULL);
+        // KASSERT(curproc_getas() == NULL);
 
         /* Create a new address space. */
         as = as_create();
         if (as ==NULL) {
-                vfs_close(v);
-                *return_value = ENOMEM;
-                return -1;
+            vfs_close(v);
+            *return_value = ENOMEM;
+            return -1;
         }
 
         /* Switch to it and activate it. */
@@ -1390,10 +1391,10 @@ int sys_execv(const char *progname, char **args, int *return_value){
         /* Load the executable. */
         result = load_elf(v, &entrypoint);
         if (result) {
-                /* p_addrspace will go away when curproc is destroyed */
-                vfs_close(v);
-                *return_value = result;
-                return -1;
+            /* p_addrspace will go away when curproc is destroyed */
+            vfs_close(v);
+            *return_value = result;
+            return -1;
         }
 
         /* Done with the file now. */
@@ -1402,32 +1403,48 @@ int sys_execv(const char *progname, char **args, int *return_value){
         /* Define the user stack in the address space */
         result = as_define_stack(as, &stackptr);
         if (result) {
-                /* p_addrspace will go away when curproc is destroyed */
-                *return_value = result;
-                return -1;
+            /* p_addrspace will go away when curproc is destroyed */
+            *return_value = result;
+            return -1;
         }
 
-        int argc = num;
-        vaddr_t addr[argc];
+        vaddr_t addr[num + 1];
 
         for (i = num - 1; i >= 0 ; i--){
-                length = strlen(args[i]);
-                stackptr = stackptr - (length + 4 - (length % 4));
-                result = copyoutstr(args[i], (userptr_t) stackptr,length, fuck);
 
-                addr[i] = stackptr;
+		    length = strlen(argv[i]) + 1;
+
+		    if (length % 4 == 0){
+		      stackptr = stackptr - length;
+		    }else{
+		      length = (length + 4 - (length % 4));
+		      stackptr = stackptr - length;
+		    }
+
+		    result = copyoutstr(argv[i], (userptr_t)stackptr,length,s);
+
+            addr[i] = stackptr;
 
         }
-        int shift_stack = argc;
-        for (i = num - 1; i >= 0; i--){
-                stackptr = stackptr - shift_stack;
-                result = copyout(args[i],(userptr_t)stackptr, length);
-        }
+		addr[num] = 0;
+
+		//int shift_stack = num;
+		for (i = num ; i >= 0; i--){
+			stackptr = stackptr - 4;
+			result = copyout(&addr[i],(userptr_t)stackptr, 4);
+		}
+
+		userptr_t new_stackptr;
+
+		new_stackptr = (userptr_t)stackptr;
+
+		if (stackptr % 8 != 0){
+			stackptr = (stackptr / 8) * 8;
+		}
 
 
         /* Warp to user mode. */
-        enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
-                          stackptr, entrypoint);
+		enter_new_process(num /*argc*/, new_stackptr /*userspace addr of argv*/, stackptr, entrypoint);
 
         /* enter_new_process does not return. */
         panic("enter_new_process returned\n");

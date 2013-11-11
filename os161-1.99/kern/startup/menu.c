@@ -44,6 +44,7 @@
 #include "opt-synchprobs.h"
 #include "opt-sfs.h"
 #include "opt-net.h"
+#include "opt-A2.h"
 
 /*
  * In-kernel menu and command dispatcher.
@@ -101,13 +102,20 @@ cmd_progthread(void *ptr, unsigned long nargs)
 
 	strcpy(progname, args[0]);
 
-	// result = runprogram(progname,args, nargs);
-	result = runprogram(progname);
+	result = runprogram(progname,args, nargs);
+	// result = runprogram(progname);
 	if (result) {
 		kprintf("Running program %s failed: %s\n", args[0],
 			strerror(result));
+		#if OPT_A2
+			sys_exit(1);
+		#endif
+
 		return;
 	}
+	#if OPT_A2
+	sys_exit(0);
+	#endif
 
 	/* NOTREACHED: runprogram only returns on error. */
 }
@@ -152,6 +160,11 @@ common_prog(int nargs, char **args)
 		return result;
 	}
 
+	pid_t pid = threadarray_get(&proc->p_threads,0)->pid;
+	int status = -1;
+	int *options = 0;
+	int retval;
+	sys_waitpid(pid, &status, options, &retval);
 	/*
 	 * The new process will be destroyed when the program exits...
 	 * once you write the code for handling that.
