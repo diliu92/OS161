@@ -13,16 +13,17 @@
 #include <limits.h>
 
 struct processInfo{
-	pid_t self;
-	int exited; // 0 = active, 1 = exited, -1 = error
-				// if exited, remove all children proc details.
-	pid_t parent;	//maybe use *processinfo?
-	pid_t *children; //possibily not necessary?
-	int num_children;
-	int exitcode;
-	struct lock *plock;
-	struct cv *pcv;
+	pid_t self;			//the pid corresponding to this processInfo
+	int exited; 		//if the process have exited: active = 0, exited = 1, error = -1
+	pid_t parent;		//the pid of its parent
+	pid_t *children; 	//the array that contains its children’s pid
+	int num_children;	//the number of children it has
+	int exitcode;		//the exitcode of this process
+	struct lock *plock;	//used with pcv
+	struct cv *pcv;		//the parent will be sleeping on this cv if the process have not
+						//finished yet. This process will wakeup its parent when it exits.
 };
+
 
 void create_proc_info_array(void);
 

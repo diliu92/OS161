@@ -13,12 +13,19 @@ int sys_open(const char *filename, int flags, int mode, int *return_val){
     struct vnode *v;
     int result;
     struct file_des *fd;
+    // char *path = kstrdup(filename);
 
-    if ((filename == NULL) && (flags != O_CREAT)){
-        *return_val = ENODEV;
-        return -1;
+    if (filename == NULL) {
+        if (flags != O_CREAT) {
+            *return_val = ENODEV;
+            return -1;
+        }
     }
-
+    // result = vfs_lookup(path,&v);
+    // if (result){
+    //     *return_val = result;
+    //     return -1;
+    // }
     if (flags == O_APPEND) {
         // Block user from open a file in O_APPEND mode
         *return_val = EAGAIN;
@@ -68,14 +75,15 @@ int sys_open(const char *filename, int flags, int mode, int *return_val){
 // Read from the file
 int
 sys_read(int fd, void *buf, size_t buflen, int *return_val){
-    struct file_des *file_d;
-    file_d = array_get(curthread->fdt->fds, fd);
 
-    // If at address deadbeef
-    if (fd == DEADBEEF){
+    // If at address deadbeef or fd out of range
+    if (fd == DEADBEEF || fd < 0 || fd >= (int)array_num(curthread->fdt->fds)){
         *return_val = EBADF;
         return -1;
     }
+
+    struct file_des *file_d;
+    file_d = array_get(curthread->fdt->fds, fd);
 
     // If fild_d is NULL or is write only
     if ((file_d == NULL) || (file_d->flag == 1)){
@@ -129,11 +137,13 @@ sys_read(int fd, void *buf, size_t buflen, int *return_val){
 // Write to the file
 int
 sys_write(int fd, const void *buf, size_t nbytes, int *return_val){
-    // If at address deadbeef
-    if (fd == DEADBEEF){
-            *return_val = EBADF;
-            return -1;
+
+    // If at address deadbeef or fd out of range
+    if (fd == DEADBEEF || fd < 0 || fd >= (int)array_num(curthread->fdt->fds)){
+        *return_val = EBADF;
+        return -1;
     }
+
     curfdt = curthread->fdt;
     struct file_des *file_d;
     file_d = array_get(curfdt->fds,fd);
@@ -189,8 +199,9 @@ sys_write(int fd, const void *buf, size_t nbytes, int *return_val){
 // Close the file
 int
 sys_close(int fd, int *return_val){
-    // If at address deadbeef
-    if (fd == DEADBEEF){
+
+    // If at address deadbeef or fd out of range
+    if (fd == DEADBEEF || fd < 0 || fd >= (int)array_num(curthread->fdt->fds)){
         *return_val = EBADF;
         return -1;
     }
