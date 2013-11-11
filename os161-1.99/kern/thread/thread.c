@@ -1347,21 +1347,26 @@ int sys_execv(const char *progname, char **args, int *return_value){
             *return_value = ENODEV;
             return -1;
         }
-        while (args[num] != NULL){
+        while (args[num]  != NULL){
             num = num + 1;
+        }
+
+        if (num == 0){
+                *return_value = ENOENT;
+                return -1;
         }
 
         pathname = (char *)kmalloc(sizeof PATH_MAX);
         result = copyinstr((userptr_t)progname, pathname, PATH_MAX, s);
 
-        argv = kmalloc(sizeof PATH_MAX);
+        argv = kmalloc(sizeof ARG_MAX);
         for (i = 0; i < num; i ++){
-            argv[i] = (char *)kmalloc(sizeof ARG_MAX);
+            argv[i]  = (char *)kmalloc(sizeof PATH_MAX);
         }
 
         for (i = 0; i < num; i++){
-            length = strlen(args[i]);
-            copyinstr((userptr_t)args[i], argv[i], length, s);
+            length = strlen(args[i] );
+            copyinstr((userptr_t)args[i] , argv[i] , length, s);
         }
 
 
@@ -1369,9 +1374,12 @@ int sys_execv(const char *progname, char **args, int *return_value){
         /* Open the file. */
         result = vfs_open(pathname, O_RDONLY, 0, &v);
         if (result) {
-            *return_value = result;
+            *return_value = ENOEXEC;
             return -1;
         }
+
+        /* We should be a new process. */
+        // KASSERT(curproc_getas() == NULL);
 
         /* Create a new address space. */
         as = as_create();
@@ -1390,7 +1398,7 @@ int sys_execv(const char *progname, char **args, int *return_value){
         if (result) {
             /* p_addrspace will go away when curproc is destroyed */
             vfs_close(v);
-            *return_value = result;
+            *return_value = ENOEXEC;
             return -1;
         }
 
@@ -1401,7 +1409,7 @@ int sys_execv(const char *progname, char **args, int *return_value){
         result = as_define_stack(as, &stackptr);
         if (result) {
             /* p_addrspace will go away when curproc is destroyed */
-            *return_value = result;
+            *return_value = ENOMEM;
             return -1;
         }
 
@@ -1409,44 +1417,43 @@ int sys_execv(const char *progname, char **args, int *return_value){
 
         for (i = num - 1; i >= 0 ; i--){
 
-		    length = strlen(argv[i]) + 1;
+                    length = strlen(argv[i] ) + 1;
 
-		    if (length % 4 == 0){
-		      stackptr = stackptr - length;
-		    }else{
-		      length = (length + 4 - (length % 4));
-		      stackptr = stackptr - length;
-		    }
+                    if (length % 4 == 0){
+                      stackptr = stackptr - length;
+                    }else{
+                      length = (length + 4 - (length % 4));
+                      stackptr = stackptr - length;
+                    }
 
-		    result = copyoutstr(argv[i], (userptr_t)stackptr,length,s);
+                    result = copyoutstr(argv[i] , (userptr_t)stackptr,length,s);
 
-            addr[i] = stackptr;
+            addr[i]  = stackptr;
 
         }
-		addr[num] = 0;
+                addr[num]  = 0;
 
-		//int shift_stack = num;
-		for (i = num ; i >= 0; i--){
-			stackptr = stackptr - 4;
-			result = copyout(&addr[i],(userptr_t)stackptr, 4);
-		}
+                //int shift_stack = num;
+                for (i = num ; i >= 0; i--){
+                        stackptr = stackptr - 4;
+                        result = copyout(&addr[i] ,(userptr_t)stackptr, 4);
+                }
 
-		userptr_t new_stackptr;
+                userptr_t new_stackptr;
 
-		new_stackptr = (userptr_t)stackptr;
+                new_stackptr = (userptr_t)stackptr;
 
-		if (stackptr % 8 != 0){
-			stackptr = (stackptr / 8) * 8;
-		}
+                if (stackptr % 8 != 0){
+                        stackptr = (stackptr / 8) * 8;
+                }
 
 
         /* Warp to user mode. */
-		enter_new_process(num /*argc*/, new_stackptr /*userspace addr of argv*/, stackptr, entrypoint);
+                enter_new_process(num /*argc*/, new_stackptr /*userspace addr of argv*/, stackptr, entrypoint);
 
         /* enter_new_process does not return. */
         panic("enter_new_process returned\n");
         *return_value = EINVAL;
         return -1;
 }
-
 #endif
