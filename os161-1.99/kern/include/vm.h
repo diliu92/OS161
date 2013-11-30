@@ -44,7 +44,7 @@
 #define VM_FAULT_WRITE       1    /* A write was attempted */
 #define VM_FAULT_READONLY    2    /* A write to a readonly page was attempted*/
 
-
+paddr_t getppages(unsigned long npages);
 /* Initialization function */
 void vm_bootstrap(void);
 
@@ -58,6 +58,8 @@ void free_kpages(vaddr_t addr);
 /* TLB shootdown handling called from interprocessor_interrupt */
 void vm_tlbshootdown_all(void);
 void vm_tlbshootdown(const struct tlbshootdown *);
+
+int tlb_get_rr_victim(void);
 
 
 #endif /* _VM_H_ */
